@@ -59,7 +59,8 @@ TREE <- lapply(states, function(x){
 
 
 for(state in states){
-  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, "_PLOT.zip", sep = ""),
+  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, 
+                      "_PLOT.zip", sep = ""),
                 temp, mode = "wb")
   unzip(temp, paste(state, "_PLOT.csv", sep = ""))
 }
@@ -74,7 +75,8 @@ PLOT <- lapply(states, function(x){
 
 
 for(state in states){
-  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, "_COND.zip", sep = ""),
+  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, 
+                      "_COND.zip", sep = ""),
                 temp, mode = "wb")
   unzip(temp, paste(state, "_COND.csv", sep = ""))
 }
@@ -87,23 +89,37 @@ COND <- lapply(states, function(x){
 })
 
 
+for(state in states){
+  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, 
+                      "_TREE_GRM_COMPONENT.zip", sep = ""),
+                temp, mode = "wb")
+  unzip(temp, paste(state, "_TREE_GRM_COMPONENT.csv", sep = ""))
+}
+  
+GRM <- lapply(states, function(x){
+  read.csv(paste(x, "_TREE_GRM_COMPONENT.csv", sep = ""), header = T) %>% 
+    filter(!is.na(ANN_DIA_GROWTH)) %>% 
+    select(TRE_CN, STATECD, DIA_BEGIN, DIA_MIDPT, ANN_DIA_GROWTH)
+})
+
 # Combine states' data
 
 nf_trees <- rbind(TREE[[1]], TREE[[2]], TREE[[3]], TREE[[4]])
 nf_plots <- rbind(PLOT[[1]], PLOT[[2]], PLOT[[3]], PLOT[[4]])
 nf_conds <- rbind(COND[[1]], COND[[2]], COND[[3]], COND[[4]])
-
+nf_grms <- rbind(GRM[[1]], GRM[[2]], GRM[[3]], GRM[[4]])
 
 # delete temporary objects and downloaded files
 
 unlink(temp)
 
-remove(TREE, PLOT, COND, temp, state)
+remove(TREE, PLOT, COND, GRM, temp, state)
 
 for(state in states){
   file.remove(paste(state, "_TREE.csv", sep = ""))
   file.remove(paste(state, "_PLOT.csv", sep = ""))
   file.remove(paste(state, "_COND.csv", sep = ""))
+  file.remove(paste(state, "_TREE_GRM_COMPONENT.csv", sep = ""))
 }
 
 
@@ -211,19 +227,22 @@ nf_fia <- nf_end %>%
          status_change = as.factor(status_change),
          SPCD = as.factor(SPCD),
          plt_cn_e = as.factor(plt_cn_e)) %>%
-  select(spp = SPCD, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, 
+  select(cn_e, spp = SPCD, dbh_e, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
          tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, 
          forest_type_s, forest_type_e, stocking_s, stocking_e, 
          landscape_s, landscape_e, site_class_s, site_class_e, 
          slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
          elev = ELEV, date_s, date_e, interval, status_change,
-         plot = plt_cn_e) # mortality year was all null and was removed
+         plot = plt_cn_e) %>% # mortality year was all null and was removed
+  inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
+  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, dbh_rate = ANN_DIA_GROWTH, 
+         state = STATECD)
   
 
 
-remove(nf_start, nf_end, nf_conds, nf_plots, nf_trees, states, 
-       VT_counties, NH_counties, NY_counties, ME_counties, pbal)
+remove(nf_start, nf_end, nf_conds, nf_plots, nf_trees, nf_grms, states, 
+       VT_counties, NH_counties, NY_counties, ME_counties, pbal, state)
 
 
 
@@ -238,6 +257,8 @@ nf_fia <- nf_fia %>%
   select(-landscape_e, -site_class_e, -slope_e, -aspect_e) %>%
   filter(!is.na(spp), # only keep records with all neccessary fields
          !is.na(dbh_s),
+         !is.na(dbh_mid),
+         !is.na(dbh_e),
          !is.na(crown_class_s),
          !is.na(tree_class_s),
          !is.na(ba_s),
@@ -356,6 +377,14 @@ nf_fia$landscape <- factor(unname(landscapes[as.character(nf_fia$landscape)]),
 
 remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
+
+nf_fia <- nf_fia %>% 
+  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate, 
+         crown_class_s, crown_class_e, tree_class_s, tree_class_e,
+         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, forest_type_s, forest_type_e,
+         stocking_s, stocking_e, landscape, site_class, slope, aspect, 
+         lat, lon, elev, state, date_s, date_e, interval, status_change,
+         plot)
 
 
 
