@@ -28,13 +28,12 @@ for(state in states){
   unzip(temp, paste(state, "_TREE.csv", sep = ""))
 }
 
-# also select ", SAWHT, BOLEHT, FORMCL, HT, ACTUALHT" to explore form class
 TREE <- lapply(states, function(x){
   read.csv(paste(x, "_TREE.csv", sep = ""), header = T) %>% 
     filter(COUNTYCD %in% eval(as.name(paste(x, "_counties", sep = ""))),
            DIAHTCD == 1) %>% # excludes seedlings measured at root collar
     select(CN, PLT_CN, SUBP, PREV_TRE_CN, CONDID, DIA, SPCD, STATUSCD, 
-           MORTYR, CR, CCLCD, TREECLCD, SAWHT, BOLEHT, FORMCL, HT, ACTUALHT) %>%
+           MORTYR, CR, CCLCD, TREECLCD, HT) %>%
     mutate(ba_ac = if_else(DIA >= 5, 
                            # poles & larger from 24' radius subplots
                            # saplings from 6.8' radius microplots
@@ -100,7 +99,8 @@ for(state in states){
 GRM <- lapply(states, function(x){
   read.csv(paste(x, "_TREE_GRM_COMPONENT.csv", sep = ""), header = T) %>% 
     filter(!is.na(ANN_DIA_GROWTH)) %>% 
-    select(TRE_CN, STATECD, DIA_BEGIN, DIA_MIDPT, ANN_DIA_GROWTH)
+    select(TRE_CN, STATECD, DIA_BEGIN, DIA_MIDPT, DIA_END, ANN_DIA_GROWTH,
+           HT_BEGIN, HT_MIDPT, HT_END, ANN_HT_GROWTH)
 })
 
 # Combine states' data
@@ -174,10 +174,7 @@ nf_end <- nf_trees %>%
          MEASDAY_E = MEASDAY, 
          ba_e = BALIVE,
          bal_e = bal, 
-         sawht_e = SAWHT,
-         boleht_e = BOLEHT,
          ht_e = HT,
-         actualht_e = ACTUALHT,
          forest_type_e = FORTYPCD, 
          stocking_e = ALSTKCD, 
          site_class_e = SITECLCD,
@@ -185,7 +182,7 @@ nf_end <- nf_trees %>%
          slope_e = SLOPE, 
          aspect_e = ASPECT, 
          designcd_e = DESIGNCD) %>%
-  select(-SPCD, FORMCL)
+  select(-SPCD)
 
 nf_start <- nf_trees %>%
   filter(CN %in% nf_end$PREV_TRE_CN) %>%
@@ -195,13 +192,12 @@ nf_start <- nf_trees %>%
          statuscd_s = STATUSCD, mortyr_s = MORTYR, cr_s = CR, 
          crown_class_s = CCLCD, tree_class_s = TREECLCD, 
          MEASYEAR_S = MEASYEAR, MEASMON_S = MEASMON, MEASDAY_S = MEASDAY, 
-         ba_s = BALIVE, bal_s = bal, sawht_s = SAWHT,
-         boleht_s = BOLEHT, ht_s = HT, actualht_s = ACTUALHT,
+         ba_s = BALIVE, bal_s = bal, ht_s = HT, 
          forest_type_s = FORTYPCD, 
          stocking_s = ALSTKCD, site_class_s = SITECLCD,
          landscape_s = PHYSCLCD, slope_s = SLOPE, aspect_s = ASPECT, 
          designcd_s = DESIGNCD) %>%
-  select(-PREV_TRE_CN, -PREV_PLT_CN, -LAT, -LON, -ELEV, -FORMCL)
+  select(-PREV_TRE_CN, -PREV_PLT_CN, -LAT, -LON, -ELEV)
 
 nf_fia <- nf_end %>%
   left_join(nf_start, by = c("PREV_TRE_CN" = "cn_s")) %>%
@@ -227,10 +223,8 @@ nf_fia <- nf_end %>%
          dbh_mid = (dbh_e + dbh_s)/2,
          ba_mid = (ba_e + ba_s)/2,
          bal_mid = (bal_e + bal_s)/2,
-         sawht_mid = (sawht_e + sawht_s)/2,
-         boleht_mid = (boleht_e + boleht_s)/2,
          ht_mid = (ht_e + ht_s)/2,
-         actualht_mid = (actualht_e + actualht_s)/2,
+         ht_rate = (ht_e - ht_s)/interval,
          status_change = case_when(statuscd_e == 1 ~ "lived",
                                    statuscd_e == 2 ~ "died",
                                    statuscd_e == 3 ~ "cut",
@@ -241,17 +235,15 @@ nf_fia <- nf_end %>%
   select(cn_e, spp = SPCD, dbh_e, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
          tree_class_e, ba_s, ba_mid, ba_e, 
-         bal_s, bal_mid, bal_e, sawht_s, sawht_mid, sawht_e,
-         boleht_s, boleht_mid, boleht_e, ht_s, ht_mid, ht_e,
-         actualht_s, actualht_mid, actualht_e,
+         bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
          forest_type_s, forest_type_e, stocking_s, stocking_e, 
          landscape_s, landscape_e, site_class_s, site_class_e, 
          slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
          elev = ELEV, date_s, date_e, interval, status_change,
          plot = plt_cn_e) %>% # mortality year was all null and was removed
   inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
-  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, dbh_rate = ANN_DIA_GROWTH, 
-         state = STATECD)
+  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
+         dbh_rate = ANN_DIA_GROWTH, state = STATECD)
   
 
 
@@ -392,13 +384,12 @@ nf_fia$landscape <- factor(unname(landscapes[as.character(nf_fia$landscape)]),
 remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
 
-nf_fia_with_ht <- nf_fia %>% 
-  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate, 
+nf_fia <- nf_fia %>%
+  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate,
          crown_class_s, crown_class_e, tree_class_s, tree_class_e,
-         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, sawht_s, sawht_mid, sawht_e, 
-         boleht_s, boleht_mid, boleht_e, ht_s, ht_mid, ht_e, actualht_s, 
-         actualht_mid, actualht_e, forest_type_s, forest_type_e,
-         stocking_s, stocking_e, landscape, site_class, slope, aspect, 
+         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e,
+         ht_rate, forest_type_s, forest_type_e,
+         stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
          plot)
 
@@ -408,5 +399,5 @@ nf_fia_with_ht <- nf_fia %>%
 # Save ---------------------------------------------------------------------
 
 
-save(nf_fia_with_ht, file = "rda/nf-fia-with-ht.rda")
+save(nf_fia, file = "rda/nf-fia.rda")
 

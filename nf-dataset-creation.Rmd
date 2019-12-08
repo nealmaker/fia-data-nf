@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = T, error = T, warning = T, message = T, strip.white
 
 #Introduction
 
-The intent of this project is to put together a dataset of remeasured trees from the US Forest Service's Forest Inventory and Analysis (FIA) records in the Northern Forest region, which will allow tree-level changes to be modeled accurately. Specifically, the dataset should support the development of unbiased models of dbh change, crown ratio change, and mortality; and the determination as to which variables are the most important predictors of those outcomes. Potential predictors to be kept in the dataset are those that 1) are widely available in the FIA data in the region (to maintain large sample sizes), and 2) could be recorded in forest inventories or remotely without large increases in inventory costs.
+The intent of this project is to put together a dataset of remeasured trees from the US Forest Service's Forest Inventory and Analysis (FIA) records in the Northern Forest region, which will allow tree-level changes to be modeled accurately. Specifically, the dataset should support the development of unbiased models of dbh change, height, height change, crown ratio change, and mortality; and the determination as to which variables are the most important predictors of those outcomes. Potential predictors to be kept in the dataset are those that 1) are widely available in the FIA data in the region (to maintain large sample sizes), and 2) could be recorded in forest inventories or remotely without large increases in inventory costs.
 
 The Northern Forest region was chosen because it covers a fairly large geographic extent while still representing a coherent ecological region, in which trees can be expected to follow a similar set of behaviors. Models developed with the dataset should be relatively unbiased for individual forests within the region, but will still allow for streamlined analyses across disparate ownerships. The US Northern Forest is defined here as including Oswego, Oneida, Lewis, Jefferson, Saint Lawrence, Herkimer, Fulton, Hamilton, Franklin, Essex, Clinton, and Warren Counties in New York; Franklin, Orleans, Essex, Chittenden, Lamoille, Caledonia, Washington, Addison, Orange, and Grand Isle Counties in Vermont; Coos, Grafton, and Carroll Counties in New Hampshire; and Oxford, Franklin, Somerset, Androscoggin, Kennebec, Waldo, Hancock, Washington, Penobscot, Piscataquis, and Aroostook Counties in Maine.
 
@@ -46,8 +46,7 @@ FIA data were downloaded from the FIA DataMart^[https://apps.fs.usda.gov/fia/dat
 temp <- tempfile()
 
 for(state in states){
-  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, 
-                      "_TREE.zip", sep = ""),
+  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, "_TREE.zip", sep = ""),
                 temp, mode = "wb")
   unzip(temp, paste(state, "_TREE.csv", sep = ""))
 }
@@ -57,7 +56,7 @@ TREE <- lapply(states, function(x){
     filter(COUNTYCD %in% eval(as.name(paste(x, "_counties", sep = ""))),
            DIAHTCD == 1) %>% # excludes seedlings measured at root collar
     select(CN, PLT_CN, SUBP, PREV_TRE_CN, CONDID, DIA, SPCD, STATUSCD, 
-           MORTYR, CR, CCLCD, TREECLCD) %>%
+           MORTYR, CR, CCLCD, TREECLCD, HT) %>%
     mutate(ba_ac = if_else(DIA >= 5, 
                            # poles & larger from 24' radius subplots
                            # saplings from 6.8' radius microplots
@@ -123,7 +122,8 @@ for(state in states){
 GRM <- lapply(states, function(x){
   read.csv(paste(x, "_TREE_GRM_COMPONENT.csv", sep = ""), header = T) %>% 
     filter(!is.na(ANN_DIA_GROWTH)) %>% 
-    select(TRE_CN, STATECD, DIA_BEGIN, DIA_MIDPT, ANN_DIA_GROWTH)
+    select(TRE_CN, STATECD, DIA_BEGIN, DIA_MIDPT, DIA_END, ANN_DIA_GROWTH,
+           HT_BEGIN, HT_MIDPT, HT_END, ANN_HT_GROWTH)
 })
 
 # Combine states' data
@@ -192,6 +192,7 @@ nf_end <- nf_trees %>%
          MEASDAY_E = MEASDAY, 
          ba_e = BALIVE,
          bal_e = bal, 
+         ht_e = HT,
          forest_type_e = FORTYPCD, 
          stocking_e = ALSTKCD, 
          site_class_e = SITECLCD,
@@ -209,7 +210,8 @@ nf_start <- nf_trees %>%
          statuscd_s = STATUSCD, mortyr_s = MORTYR, cr_s = CR, 
          crown_class_s = CCLCD, tree_class_s = TREECLCD, 
          MEASYEAR_S = MEASYEAR, MEASMON_S = MEASMON, MEASDAY_S = MEASDAY, 
-         ba_s = BALIVE, bal_s = bal, forest_type_s = FORTYPCD, 
+         ba_s = BALIVE, bal_s = bal, ht_s = HT, 
+         forest_type_s = FORTYPCD, 
          stocking_s = ALSTKCD, site_class_s = SITECLCD,
          landscape_s = PHYSCLCD, slope_s = SLOPE, aspect_s = ASPECT, 
          designcd_s = DESIGNCD) %>%
@@ -239,6 +241,8 @@ nf_fia <- nf_end %>%
          dbh_mid = (dbh_e + dbh_s)/2,
          ba_mid = (ba_e + ba_s)/2,
          bal_mid = (bal_e + bal_s)/2,
+         ht_mid = (ht_e + ht_s)/2,
+         ht_rate = (ht_e - ht_s)/interval,
          status_change = case_when(statuscd_e == 1 ~ "lived",
                                    statuscd_e == 2 ~ "died",
                                    statuscd_e == 3 ~ "cut",
@@ -248,15 +252,16 @@ nf_fia <- nf_end %>%
          plt_cn_e = as.factor(plt_cn_e)) %>%
   select(cn_e, spp = SPCD, dbh_e, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, 
+         tree_class_e, ba_s, ba_mid, ba_e, 
+         bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
          forest_type_s, forest_type_e, stocking_s, stocking_e, 
          landscape_s, landscape_e, site_class_s, site_class_e, 
          slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
          elev = ELEV, date_s, date_e, interval, status_change,
          plot = plt_cn_e) %>% # mortality year was all null and was removed
   inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
-  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, dbh_rate = ANN_DIA_GROWTH, 
-         state = STATECD)
+  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
+         dbh_rate = ANN_DIA_GROWTH, state = STATECD)
   
 
 
@@ -361,7 +366,7 @@ forest_types <-
   c("Red pine", "Red pine", "White pine", "Mixed softwood", "Hemlock",
     "Spruce-fir", "Spruce-fir", "Spruce-fir", "Spruce-fir", "Spruce-fir",
     "Larch", "Cedar", "Mixed softwood", "Mixed softwood", "Scots pine", 
-    "Norway spruce", "Larch", "Pine-hardwood", "Cedar-hardwood",
+    "Norway spruce", "Larch", "Pine-hardwood", "Mixedwood",
     "Pine-hardwood", "Oak-hickory", "Oak-hickory", "Oak-hickory", 
     "Transition hardwood", "Transition hardwood", "Oak-hickory", 
     "Transition hardwood", "Transition hardwood", "Northern hardwood", 
@@ -404,12 +409,13 @@ nf_fia$landscape <- factor(unname(landscapes[as.character(nf_fia$landscape)]),
 remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
 
-# Put columns in order
-nf_fia <- nf_fia %>% 
-  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate, 
+# put columns in order
+nf_fia <- nf_fia %>%
+  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate,
          crown_class_s, crown_class_e, tree_class_s, tree_class_e,
-         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, forest_type_s, forest_type_e,
-         stocking_s, stocking_e, landscape, site_class, slope, aspect, 
+         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e,
+         ht_rate, forest_type_s, forest_type_e,
+         stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
          plot)
 ```
@@ -430,7 +436,7 @@ Species or species group. Similar species are grouped to ease data collection an
 
 __dbh__   
 \vspace{2pt}
-Diameter at breast height (4.5' above ground), measured in inches
+Diameter at breast height (4.5' above ground), measured in inches. Dbh rates are calculated by FIA program.
 
 __cr__   
 \vspace{2pt}
@@ -458,7 +464,11 @@ Plot basal area, measured in square feet per acre of all live trees, 1" dbh or g
 
 __bal__   
 \vspace{2pt}
-Overtopping basal area, measured in square feet per acre (basal area of all trees in plot with larger diameter than subject tree)  
+Overtopping basal area, measured in square feet per acre (basal area of all trees in plot with larger diameter than subject tree) 
+
+__ht__   
+\vspace{2pt}
+Total tree height, measured in feet. For trees with broken tops, heights are estimated by FIA program. 
 
 __forest_type__   
 \vspace{2pt}

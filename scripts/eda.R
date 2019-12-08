@@ -71,6 +71,14 @@ nf_fia %>% ggplot(aes(cr_rate)) +
   geom_density(bw = 1) + 
   scale_x_continuous(limits = c(-12, 12))
 
+nf_fia %>% ggplot() + 
+  geom_density(aes(ht_s), col = "blue") +
+  geom_density(aes(ht_mid), col = "purple") +
+  geom_density(aes(ht_e), col = "green")
+
+nf_fia %>% ggplot(aes(dbh_rate)) + 
+  geom_density(bw = .01) 
+
 nf_fia %>% ggplot() +
   geom_histogram(aes(crown_class_s), fill = "blue", alpha = .2) +
   geom_histogram(aes(crown_class_e), fill = "red", alpha = .2)
