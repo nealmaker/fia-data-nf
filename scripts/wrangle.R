@@ -232,7 +232,7 @@ nf_fia <- nf_end %>%
          status_change = as.factor(status_change),
          SPCD = as.factor(SPCD),
          plt_cn_e = as.factor(plt_cn_e)) %>%
-  select(cn_e, spp = SPCD, dbh_e, cr_s, cr_mid, 
+  select(cn_e, spp = SPCD, dbh_e, dbh_rate, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
          tree_class_e, ba_s, ba_mid, ba_e, 
          bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
@@ -385,7 +385,7 @@ remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
 
 nf_fia <- nf_fia %>%
-  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia,cr_s, cr_mid, 
+  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
          tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, 
          ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
