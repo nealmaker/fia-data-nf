@@ -414,3 +414,33 @@ nf_fia %>%
   scale_x_continuous(limits = c(0, 25)) +
   facet_grid(rows = factor(crown_class), cols = status_change)
 
+
+######################################
+## Height and Height Growth
+######################################
+ht_data <- nf_fia %>% 
+  filter(!is.na(ht_e)) %>% 
+  mutate(ht_rate_calc = (ht_e - ht_s)/interval,
+         ht_rate_err = ht_rate - ht_rate_calc)
+
+summary(select(ht_data, ht_s, ht_e, ht_rate, ht_rate_calc, ht_rate_err))
+
+mean(ht_data$ht_rate_calc < 0, na.rm = T)
+
+
+######################################
+## DBH and DBH Growth
+######################################
+dbh_data <- nf_fia %>% 
+  filter(!is.na(dbh_e)) %>% 
+  mutate(dbh_rate_calc = (dbh_e - dbh_s)/interval,
+         dbh_rate_err = dbh_rate - dbh_rate_calc)
+
+summary(select(dbh_data, dbh_s, dbh_e, dbh_rate, dbh_rate_calc, dbh_rate_err))
+
+dbh_data %>% ggplot(aes(dbh_rate_err)) + 
+  geom_density() + 
+  scale_x_continuous(limits = c(-.5, .2))
+
+mean(dbh_data$dbh_rate_calc < 0)
+mean(dbh_data$dbh_rate_err == 0)

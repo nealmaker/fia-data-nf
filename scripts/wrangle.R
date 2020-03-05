@@ -243,7 +243,7 @@ nf_fia <- nf_end %>%
          plot = plt_cn_e) %>% # mortality year was all null and was removed
   inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
   rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
-         dbh_rate = ANN_DIA_GROWTH, state = STATECD)
+         dbh_rate_fia = ANN_DIA_GROWTH, state = STATECD)
   
 
 
@@ -385,10 +385,10 @@ remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
 
 nf_fia <- nf_fia %>%
-  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, cr_s, cr_mid, cr_e, cr_rate,
-         crown_class_s, crown_class_e, tree_class_s, tree_class_e,
-         ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e,
-         ht_rate, forest_type_s, forest_type_e,
+  select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia,cr_s, cr_mid, 
+         cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
+         tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, 
+         ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
          stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
          plot)
