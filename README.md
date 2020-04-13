@@ -2,7 +2,7 @@
 Development of an FIA dataset to model tree-level changes in the Northern Forest
 
 ## Purpose
-US Forest Service Forest Inventory and Analysis data is extensive and multifaceted. This project fetches the appropriate tree remeassurement data and wrangles it into a form suitable for use in modeling tree-level changes in the New York Adirondacks, northern Vermont, northern New Hampshire, and northern Maine. Specifically, the dataset was built to support the creation of individual tree diameter growth models, crown ratio change models, and mortality models.
+US Forest Service Forest Inventory and Analysis data is extensive and multifaceted. This project fetches the appropriate tree remeassurement data and wrangles it into a form suitable for use in modeling tree-level changes in the New York Adirondacks, northern Vermont, northern New Hampshire, and northern Maine. Specifically, the dataset was built to support the creation of individual tree models of diameter growth, height, height growth, crown ratio change, and survival.
 
 ## Use
 Read the [report](nf-dataset-creation.Rmd) for more information about the FIA data, the purpose of this dataset, and how it was created.
