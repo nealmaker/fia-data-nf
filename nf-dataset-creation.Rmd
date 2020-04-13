@@ -535,7 +535,7 @@ Physiography. From $COND\$PHYSCLCD$. Depends on land form, topographic position,
 
 __site_class__  
 \vspace{2pt}
-Site productivity class. From $COND\$SITECLCD$. Defined by potential wood growth in cubic feet per acre per year:  
+Site productivity class. From $COND\$SITECLCD$. Defined by potential wood growth in cubic feet per acre per year:   
 &nbsp;&nbsp;&nbsp;&nbsp;*1* 225+ ft^3^ac^-1^yr^-1^  
 &nbsp;&nbsp;&nbsp;&nbsp;*2* 165-224 ft^3^ac^-1^yr^-1^   
 &nbsp;&nbsp;&nbsp;&nbsp;*3* 120-164 ft^3^ac^-1^yr^-1^   
@@ -574,7 +574,7 @@ Length of remeasurement period in years. Calculated as $date\_e - date\_s$.
 
 __status_change__  
 \vspace{2pt}
-Change in tree status during remeasurement period. Based on $TREE\$STATUSCD$. One of:  
+Change in tree status during remeasurement period. Based on $TREE\$STATUSCD$. One of:   
 &nbsp;&nbsp;&nbsp;&nbsp;*lived*  
 &nbsp;&nbsp;&nbsp;&nbsp;*died* (natural mortality)  
 &nbsp;&nbsp;&nbsp;&nbsp;*cut*  
