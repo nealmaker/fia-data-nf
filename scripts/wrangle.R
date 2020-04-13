@@ -48,6 +48,8 @@ TREE <- lapply(states, function(x){
 # or I can account for the various designs when I calculate TREE$ba_ac
 # (above; which would mean calculating ba_ac after combining
 # states' data and joining nf_trees to nf_plots).
+# Update: it's probably harder b/c they severed the plot codes to older 
+# inventories to keep people from seeing real coordinates
 
 # DESIGN CODES:
 # 1:4 used 1999 - present
@@ -141,11 +143,14 @@ pbal <- function(dbh, ba){
 
 # Add BAL
 nf_trees <- nf_trees %>%
-  mutate(bal = NA)
+  mutate(bal = NA,
+         bap = NA)
 
 nf_trees[nf_trees$STATUSCD == 1,] <- nf_trees[nf_trees$STATUSCD == 1,] %>% 
   group_by(PLT_CN, SUBP) %>% 
-  mutate(bal = pbal(DIA, ba_ac))
+  mutate(bal = pbal(DIA, ba_ac),
+         bap = sum(ba_ac, na.rm = T)) %>% 
+  ungroup()
 
 
 
@@ -173,6 +178,7 @@ nf_end <- nf_trees %>%
          MEASMON_E = MEASMON, 
          MEASDAY_E = MEASDAY, 
          ba_e = BALIVE,
+         bap_e = bap,
          bal_e = bal, 
          ht_e = HT,
          forest_type_e = FORTYPCD, 
@@ -188,14 +194,28 @@ nf_start <- nf_trees %>%
   filter(CN %in% nf_end$PREV_TRE_CN) %>%
   left_join(nf_plots, by = "PLT_CN") %>%
   left_join(nf_conds, by = c("PLT_CN", "CONDID")) %>%
-  rename(cn_s = CN, plt_cn_s = PLT_CN, condid_s = CONDID, dbh_s = DIA, 
-         statuscd_s = STATUSCD, mortyr_s = MORTYR, cr_s = CR, 
-         crown_class_s = CCLCD, tree_class_s = TREECLCD, 
-         MEASYEAR_S = MEASYEAR, MEASMON_S = MEASMON, MEASDAY_S = MEASDAY, 
-         ba_s = BALIVE, bal_s = bal, ht_s = HT, 
+  rename(cn_s = CN, 
+         plt_cn_s = PLT_CN, 
+         condid_s = CONDID, 
+         dbh_s = DIA, 
+         statuscd_s = STATUSCD, 
+         mortyr_s = MORTYR, 
+         cr_s = CR, 
+         crown_class_s = CCLCD, 
+         tree_class_s = TREECLCD, 
+         MEASYEAR_S = MEASYEAR, 
+         MEASMON_S = MEASMON, 
+         MEASDAY_S = MEASDAY, 
+         ba_s = BALIVE, 
+         bap_s = bap, 
+         bal_s = bal, 
+         ht_s = HT, 
          forest_type_s = FORTYPCD, 
-         stocking_s = ALSTKCD, site_class_s = SITECLCD,
-         landscape_s = PHYSCLCD, slope_s = SLOPE, aspect_s = ASPECT, 
+         stocking_s = ALSTKCD, 
+         site_class_s = SITECLCD,
+         landscape_s = PHYSCLCD, 
+         slope_s = SLOPE, 
+         aspect_s = ASPECT, 
          designcd_s = DESIGNCD) %>%
   select(-PREV_TRE_CN, -PREV_PLT_CN, -LAT, -LON, -ELEV)
 
@@ -215,13 +235,14 @@ nf_fia <- nf_end %>%
          date_e = ymd(paste(MEASYEAR_E, MEASMON_E, MEASDAY_E, sep = ""))) %>%
   filter(!is.na(date_e), !is.na(date_s)) %>% 
   # remove incorrectly entered dates (eg. Feb 31)
-  filter(ba_s < 500, ba_e < 500) %>% # ba's > 500 were found to be mistakes
+  # filter(ba_s < 500, ba_e < 500) %>% # ba's > 500 were found to be mistakes
   mutate(interval = as.double(as.period(date_e - date_s), unit = "years"),
          cr_rate = (cr_e - cr_s)/interval,
          cr_mid = (cr_e + cr_s)/2,
          dbh_rate = (dbh_e - dbh_s)/interval,
          dbh_mid = (dbh_e + dbh_s)/2,
          ba_mid = (ba_e + ba_s)/2,
+         bap_mid = (bap_e + bap_s)/2,
          bal_mid = (bal_e + bal_s)/2,
          ht_mid = (ht_e + ht_s)/2,
          ht_rate = (ht_e - ht_s)/interval,
@@ -234,7 +255,7 @@ nf_fia <- nf_end %>%
          plt_cn_e = as.factor(plt_cn_e)) %>%
   select(cn_e, spp = SPCD, dbh_e, dbh_rate, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, 
+         tree_class_e, ba_s, ba_mid, ba_e, bap_s, bap_mid, bap_e,
          bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
          forest_type_s, forest_type_e, stocking_s, stocking_e, 
          landscape_s, landscape_e, site_class_s, site_class_e, 
@@ -263,13 +284,9 @@ nf_fia <- nf_fia %>%
   select(-landscape_e, -site_class_e, -slope_e, -aspect_e) %>%
   filter(!is.na(spp), # only keep records with all neccessary fields
          !is.na(dbh_s),
-         !is.na(dbh_mid),
-         !is.na(dbh_e),
          !is.na(crown_class_s),
          !is.na(tree_class_s),
          !is.na(ba_s),
-         !is.na(ba_mid),
-         !is.na(ba_e),
          !is.na(bal_s),
          !is.na(forest_type_s),
          !is.na(forest_type_e),
@@ -387,7 +404,7 @@ remove(forest_type_codes, forest_types, landscape_codes,
 nf_fia <- nf_fia %>%
   select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, 
+         tree_class_e, ba_s, ba_mid, ba_e, bap_s, bap_mid, bap_e, bal_s, bal_mid, bal_e, ht_s, 
          ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
          stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
@@ -399,5 +416,5 @@ nf_fia <- nf_fia %>%
 # Save ---------------------------------------------------------------------
 
 
-save(nf_fia, file = "rda/nf-fia.rda")
+save(nf_fia, file = "rda/nf-fia_temp.rda")
 
