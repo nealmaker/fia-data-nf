@@ -400,6 +400,7 @@ nf_fia$landscape <- factor(unname(landscapes[as.character(nf_fia$landscape)]),
 remove(forest_type_codes, forest_types, landscape_codes,
        landscapes, species, species_codes)
 
+# put columns in order
 nf_fia <- nf_fia %>%
   select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
