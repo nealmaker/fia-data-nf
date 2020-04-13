@@ -23,7 +23,8 @@ ME_counties <- c(17, 7, 25, 1, 11, 27, 9, 29, 19, 21, 3)
 temp <- tempfile()
 
 for(state in states){
-  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", state, "_TREE.zip", sep = ""),
+  download.file(paste("https://apps.fs.usda.gov/fia/datamart/CSV/", 
+                      state, "_TREE.zip", sep = ""),
                 temp, mode = "wb")
   unzip(temp, paste(state, "_TREE.csv", sep = ""))
 }
@@ -86,7 +87,7 @@ for(state in states){
 COND <- lapply(states, function(x){
   read.csv(paste(x, "_COND.csv", sep = ""), header = T) %>% 
     filter(COUNTYCD %in% eval(as.name(paste(x, "_counties", sep = "")))) %>% 
-    select(PLT_CN, CONDID, BALIVE, FORTYPCD, ALSTKCD, SITECLCD, 
+    select(PLT_CN, CONDID, FORTYPCD, ALSTKCD, SITECLCD, 
            PHYSCLCD, SLOPE, ASPECT)
 })
 
@@ -144,12 +145,13 @@ pbal <- function(dbh, ba){
 # Add BAL
 nf_trees <- nf_trees %>%
   mutate(bal = NA,
-         bap = NA)
+         ba = NA)
 
+# Note that this only calculates ending basal areas for trees that lived
 nf_trees[nf_trees$STATUSCD == 1,] <- nf_trees[nf_trees$STATUSCD == 1,] %>% 
   group_by(PLT_CN, SUBP) %>% 
   mutate(bal = pbal(DIA, ba_ac),
-         bap = sum(ba_ac, na.rm = T)) %>% 
+         ba = sum(ba_ac, na.rm = T)) %>% 
   ungroup()
 
 
@@ -177,8 +179,7 @@ nf_end <- nf_trees %>%
          MEASYEAR_E = MEASYEAR, 
          MEASMON_E = MEASMON, 
          MEASDAY_E = MEASDAY, 
-         ba_e = BALIVE,
-         bap_e = bap,
+         ba_e = ba,
          bal_e = bal, 
          ht_e = HT,
          forest_type_e = FORTYPCD, 
@@ -206,8 +207,7 @@ nf_start <- nf_trees %>%
          MEASYEAR_S = MEASYEAR, 
          MEASMON_S = MEASMON, 
          MEASDAY_S = MEASDAY, 
-         ba_s = BALIVE, 
-         bap_s = bap, 
+         ba_s = ba, 
          bal_s = bal, 
          ht_s = HT, 
          forest_type_s = FORTYPCD, 
@@ -233,16 +233,14 @@ nf_fia <- nf_end %>%
          #make month and day codes 2 digits
          date_s = ymd(paste(MEASYEAR_S, MEASMON_S, MEASDAY_S, sep = "")),
          date_e = ymd(paste(MEASYEAR_E, MEASMON_E, MEASDAY_E, sep = ""))) %>%
-  filter(!is.na(date_e), !is.na(date_s)) %>% 
   # remove incorrectly entered dates (eg. Feb 31)
-  # filter(ba_s < 500, ba_e < 500) %>% # ba's > 500 were found to be mistakes
+  filter(!is.na(date_e), !is.na(date_s)) %>% 
   mutate(interval = as.double(as.period(date_e - date_s), unit = "years"),
          cr_rate = (cr_e - cr_s)/interval,
          cr_mid = (cr_e + cr_s)/2,
          dbh_rate = (dbh_e - dbh_s)/interval,
          dbh_mid = (dbh_e + dbh_s)/2,
          ba_mid = (ba_e + ba_s)/2,
-         bap_mid = (bap_e + bap_s)/2,
          bal_mid = (bal_e + bal_s)/2,
          ht_mid = (ht_e + ht_s)/2,
          ht_rate = (ht_e - ht_s)/interval,
@@ -255,7 +253,7 @@ nf_fia <- nf_end %>%
          plt_cn_e = as.factor(plt_cn_e)) %>%
   select(cn_e, spp = SPCD, dbh_e, dbh_rate, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, bap_s, bap_mid, bap_e,
+         tree_class_e, ba_s, ba_mid, ba_e,
          bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
          forest_type_s, forest_type_e, stocking_s, stocking_e, 
          landscape_s, landscape_e, site_class_s, site_class_e, 
@@ -263,8 +261,9 @@ nf_fia <- nf_end %>%
          elev = ELEV, date_s, date_e, interval, status_change,
          plot = plt_cn_e) %>% # mortality year was all null and was removed
   inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
+  # use these dbh's b/c inconsistencies have been resolved (eg. measurements at different heights)
   rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
-         dbh_rate_fia = ANN_DIA_GROWTH, state = STATECD)
+         dbh_rate_fia = ANN_DIA_GROWTH, state = STATECD) 
   
 
 
@@ -404,7 +403,7 @@ remove(forest_type_codes, forest_types, landscape_codes,
 nf_fia <- nf_fia %>%
   select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, bap_s, bap_mid, bap_e, bal_s, bal_mid, bal_e, ht_s, 
+         tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, 
          ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
          stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
@@ -416,5 +415,5 @@ nf_fia <- nf_fia %>%
 # Save ---------------------------------------------------------------------
 
 
-save(nf_fia, file = "rda/nf-fia_temp.rda")
+save(nf_fia, file = "rda/nf-fia.rda")
 
