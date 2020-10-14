@@ -108,10 +108,10 @@ GRM <- lapply(states, function(x){
 
 # Combine states' data
 
-nf_trees <- rbind(TREE[[1]], TREE[[2]], TREE[[3]], TREE[[4]])
-nf_plots <- rbind(PLOT[[1]], PLOT[[2]], PLOT[[3]], PLOT[[4]])
-nf_conds <- rbind(COND[[1]], COND[[2]], COND[[3]], COND[[4]])
-nf_grms <- rbind(GRM[[1]], GRM[[2]], GRM[[3]], GRM[[4]])
+nf_trees <- do.call(rbind, TREE)
+nf_plots <- do.call(rbind, PLOT)
+nf_conds <- do.call(rbind, COND)
+nf_grms <- do.call(rbind, GRM)
 
 # delete temporary objects and downloaded files
 
@@ -189,7 +189,7 @@ nf_end <- nf_trees %>%
          slope_e = SLOPE, 
          aspect_e = ASPECT, 
          designcd_e = DESIGNCD) %>%
-  select(-SPCD)
+  select(-SPCD, -ba_ac, -SUBP)
 
 nf_start <- nf_trees %>%
   filter(CN %in% nf_end$PREV_TRE_CN) %>%
@@ -259,7 +259,7 @@ nf_fia <- nf_end %>%
          landscape_s, landscape_e, site_class_s, site_class_e, 
          slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
          elev = ELEV, date_s, date_e, interval, status_change,
-         plot = plt_cn_e) %>% # mortality year was all null and was removed
+         plot = plt_cn_e, ba_ac, plt_cn_s, SUBP) %>% # mortality year was all null and was removed
   inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
   # use these dbh's b/c inconsistencies have been resolved (eg. measurements at different heights)
   rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
@@ -408,9 +408,45 @@ nf_fia <- nf_fia %>%
          ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
          stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
-         plot)
+         plot, ba_ac, plt_cn_s, SUBP)
 
 
+# Add species-specific basal areas (at start of remeasurement period) ------
+
+sppba <- lapply(levels(nf_fia$spp), function(i) {
+  temp <- nf_fia %>% group_by(plt_cn_s, SUBP) %>% 
+    mutate(sppba = sum(ba_ac[spp == i])) %>% 
+    ungroup()
+  return(temp$sppba)
+})
+
+temp <- as.data.frame(do.call(cbind, sppba))
+names(temp) <- paste0("ba_", levels(nf_fia$spp))
+nf_fia <- cbind(nf_fia, temp)
+
+
+# Add species-specific bal (at start of remeasurement period) --------------
+
+# Calculates overtopping basal area (BAL) of one species only, assuming all 
+# input trees are in same plot and ba is adjusted based on tpa:
+sbal <- function(dbh, ba, spp, sppref){
+  sapply(dbh, function(x){
+    index <- dbh > x & spp == sppref
+    return(sum(ba[index]))
+  })
+}
+
+sppbal <- lapply(levels(nf_fia$spp), function(i) {
+  temp <- nf_fia %>% group_by(plt_cn_s, SUBP) %>% 
+    mutate(sppbal = sbal(dbh_s, ba_ac, spp, i)) %>% 
+    ungroup()
+  return(temp$sppbal)
+})
+
+temp <- as.data.frame(do.call(cbind, sppbal))
+names(temp) <- paste0("bal_", levels(nf_fia$spp))
+nf_fia <- cbind(nf_fia, temp) %>% 
+  select(-ba_ac, -plt_cn_s, -SUBP)
 
 
 # Save ---------------------------------------------------------------------
