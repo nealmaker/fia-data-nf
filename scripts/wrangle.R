@@ -1,10 +1,16 @@
+#' There are numerous actions that could filter out some trees in a plot without 
+#' removing them all. The best thing would be to do all plot-level calculations
+#' first (including spp spec ba & bal, which entails doing our species grouping 
+#' and renaming at beginning). 
+
+
 library("tidyverse")
 library("lubridate")
 
 
-##############################
+################################################################################
 # Import FIA data
-##############################
+################################################################################
 
 # Define States & counties (FIPS codes) in Northern Forest region --------
 
@@ -127,180 +133,9 @@ for(state in states){
 }
 
 
-##############################
-# Calculate BAL for each tree
-##############################
-
-
-# Calculates overtopping basal area (BAL) assuming all input trees are in 
-# same plot and ba is adjusted based on tpa:
-pbal <- function(dbh, ba){
-  sapply(dbh, function(x){
-    index <- dbh > x
-    return(sum(ba[index]))
-  })
-}
-
-
-# Add BAL
-nf_trees <- nf_trees %>%
-  mutate(bal = NA,
-         ba = NA)
-
-# Note that this only calculates ending basal areas for trees that lived
-nf_trees[nf_trees$STATUSCD == 1,] <- nf_trees[nf_trees$STATUSCD == 1,] %>% 
-  group_by(PLT_CN, SUBP) %>% 
-  mutate(bal = pbal(DIA, ba_ac),
-         ba = sum(ba_ac, na.rm = T)) %>% 
-  ungroup()
-
-
-
-##############################
-# Combine FIA tables & reformat
-##############################
-
-
-# get before and after data and remeasurement period for each tree and -----
-# add initial cond and plot data -------------------------------------------
-
-nf_end <- nf_trees %>%
-  filter(PREV_TRE_CN > 0) %>%
-  left_join(nf_plots, by = "PLT_CN") %>%
-  left_join(nf_conds, by = c("PLT_CN", "CONDID")) %>%
-  rename(cn_e = CN, plt_cn_e = PLT_CN, 
-         condid_e = CONDID, 
-         dbh_e = DIA, 
-         statuscd_e = STATUSCD,
-         mortyr_e = MORTYR, 
-         cr_e = CR, 
-         crown_class_e = CCLCD, 
-         tree_class_e = TREECLCD, 
-         MEASYEAR_E = MEASYEAR, 
-         MEASMON_E = MEASMON, 
-         MEASDAY_E = MEASDAY, 
-         ba_e = ba,
-         bal_e = bal, 
-         ht_e = HT,
-         forest_type_e = FORTYPCD, 
-         stocking_e = ALSTKCD, 
-         site_class_e = SITECLCD,
-         landscape_e = PHYSCLCD, 
-         slope_e = SLOPE, 
-         aspect_e = ASPECT, 
-         designcd_e = DESIGNCD) %>%
-  select(-SPCD, -ba_ac, -SUBP)
-
-nf_start <- nf_trees %>%
-  filter(CN %in% nf_end$PREV_TRE_CN) %>%
-  left_join(nf_plots, by = "PLT_CN") %>%
-  left_join(nf_conds, by = c("PLT_CN", "CONDID")) %>%
-  rename(cn_s = CN, 
-         plt_cn_s = PLT_CN, 
-         condid_s = CONDID, 
-         dbh_s = DIA, 
-         statuscd_s = STATUSCD, 
-         mortyr_s = MORTYR, 
-         cr_s = CR, 
-         crown_class_s = CCLCD, 
-         tree_class_s = TREECLCD, 
-         MEASYEAR_S = MEASYEAR, 
-         MEASMON_S = MEASMON, 
-         MEASDAY_S = MEASDAY, 
-         ba_s = ba, 
-         bal_s = bal, 
-         ht_s = HT, 
-         forest_type_s = FORTYPCD, 
-         stocking_s = ALSTKCD, 
-         site_class_s = SITECLCD,
-         landscape_s = PHYSCLCD, 
-         slope_s = SLOPE, 
-         aspect_s = ASPECT, 
-         designcd_s = DESIGNCD) %>%
-  select(-PREV_TRE_CN, -PREV_PLT_CN, -LAT, -LON, -ELEV)
-
-nf_fia <- nf_end %>%
-  left_join(nf_start, by = c("PREV_TRE_CN" = "cn_s")) %>%
-  filter(statuscd_s == 1, # only trees that started live
-         statuscd_e != 0, # remove trees that were remeasured incorrectly
-         cr_s >= 0,       # only trees that had cr at start
-         designcd_s == 1, # only those with current plot design
-         designcd_e == 1) %>%   
-  mutate(MEASMON_E = formatC(MEASMON_E, width = 2, format = "d", flag = "0"), 
-         MEASMON_S = formatC(MEASMON_S, width = 2, format = "d", flag = "0"),
-         MEASDAY_E = formatC(MEASDAY_E, width = 2, format = "d", flag = "0"),
-         MEASDAY_E = formatC(MEASDAY_S, width = 2, format = "d", flag = "0"),
-         #make month and day codes 2 digits
-         date_s = ymd(paste(MEASYEAR_S, MEASMON_S, MEASDAY_S, sep = "")),
-         date_e = ymd(paste(MEASYEAR_E, MEASMON_E, MEASDAY_E, sep = ""))) %>%
-  # remove incorrectly entered dates (eg. Feb 31)
-  filter(!is.na(date_e), !is.na(date_s)) %>% 
-  mutate(interval = as.double(as.period(date_e - date_s), unit = "years"),
-         cr_rate = (cr_e - cr_s)/interval,
-         cr_mid = (cr_e + cr_s)/2,
-         dbh_rate = (dbh_e - dbh_s)/interval,
-         dbh_mid = (dbh_e + dbh_s)/2,
-         ba_mid = (ba_e + ba_s)/2,
-         bal_mid = (bal_e + bal_s)/2,
-         ht_mid = (ht_e + ht_s)/2,
-         ht_rate = (ht_e - ht_s)/interval,
-         status_change = case_when(statuscd_e == 1 ~ "lived",
-                                   statuscd_e == 2 ~ "died",
-                                   statuscd_e == 3 ~ "cut",
-                                   TRUE ~ "error"),
-         status_change = as.factor(status_change),
-         SPCD = as.factor(SPCD),
-         plt_cn_e = as.factor(plt_cn_e)) %>%
-  select(cn_e, spp = SPCD, dbh_e, dbh_rate, cr_s, cr_mid, 
-         cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e,
-         bal_s, bal_mid, bal_e, ht_s, ht_mid, ht_e, ht_rate,
-         forest_type_s, forest_type_e, stocking_s, stocking_e, 
-         landscape_s, landscape_e, site_class_s, site_class_e, 
-         slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
-         elev = ELEV, date_s, date_e, interval, status_change,
-         plot = plt_cn_e, ba_ac, plt_cn_s, SUBP) %>% # mortality year was all null and was removed
-  inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
-  # use these dbh's b/c inconsistencies have been resolved (eg. measurements at different heights)
-  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
-         dbh_rate_fia = ANN_DIA_GROWTH, state = STATECD) 
-  
-
-
-remove(nf_start, nf_end, nf_conds, nf_plots, nf_trees, nf_grms, states, 
-       VT_counties, NH_counties, NY_counties, ME_counties, pbal, state)
-
-
-
-# Keep starting values for fixed variables & ------------------------------
-# only keep records with all neccessary fields ----------------------------
-
-nf_fia <- nf_fia %>%
-  rename(landscape = landscape_s,
-         site_class = site_class_s,
-         slope = slope_s,
-         aspect = aspect_s) %>%
-  select(-landscape_e, -site_class_e, -slope_e, -aspect_e) %>%
-  filter(!is.na(spp), # only keep records with all neccessary fields
-         !is.na(dbh_s),
-         !is.na(crown_class_s),
-         !is.na(tree_class_s),
-         !is.na(ba_s),
-         !is.na(bal_s),
-         !is.na(forest_type_s),
-         !is.na(forest_type_e),
-         !is.na(stocking_s),
-         !is.na(stocking_e),
-         !is.na(landscape),
-         !is.na(site_class),
-         !is.na(slope),
-         !is.na(aspect),
-         !is.na(lat),
-         !is.na(lon),
-         !is.na(elev),
-         !is.na(status_change),
-         xor(is.na(bal_e), status_change == "lived"))
-
+################################################################################
+# Group species
+################################################################################
 
 # Make names and factor levels more intuitive ------------------------------
 
@@ -341,10 +176,235 @@ species <-
 
 names(species) <- as.character(species_codes)
 
-nf_fia$spp <- factor(unname(species[as.character(nf_fia$spp)]),
+nf_trees$SPCD <- factor(unname(species[as.character(nf_trees$SPCD)]),
                      levels = levels(factor(species))) # standardize levels
 
-#---------------------------------------------------------------------------
+
+
+################################################################################
+# Calculate BAL & plot BA for each tree
+################################################################################
+
+# Calculates overtopping basal area (BAL) assuming all input trees are in 
+# same plot and ba is adjusted based on tpa:
+pbal <- function(dbh, ba){
+  sapply(dbh, function(x){
+    index <- dbh > x
+    return(sum(ba[index]))
+  })
+}
+
+
+# Add BAL
+nf_trees <- nf_trees %>%
+  mutate(bal = NA,
+         ba = NA)
+
+# Note that this only calculates ending basal areas for trees that lived
+nf_trees[nf_trees$STATUSCD == 1,] <- nf_trees[nf_trees$STATUSCD == 1,] %>% 
+  group_by(PLT_CN, SUBP) %>% 
+  mutate(bal = pbal(DIA, ba_ac),
+         ba = sum(ba_ac, na.rm = T)) %>% 
+  ungroup()
+
+
+################################################################################
+# Calculate species-specific BAL & plot BA for each tree
+################################################################################
+
+# BA ---------------------------------------------------------------------------
+sppba <- lapply(levels(nf_trees$SPCD), function(i) {
+  temp <- nf_trees %>% 
+    group_by(PLT_CN, SUBP) %>% 
+    mutate(sppba = sum(ba_ac[SPCD == i & STATUSCD == 1])) %>% 
+    ungroup()
+  return(temp$sppba)
+})
+
+temp <- as.data.frame(do.call(cbind, sppba))
+names(temp) <- paste0("ba_", levels(nf_trees$SPCD))
+nf_trees <- cbind(nf_trees, temp)
+
+
+# BAL --------------------------------------------------------------------------
+
+# Calculates overtopping basal area (BAL) of one species only, assuming all 
+# input trees are in same plot and ba is adjusted based on tpa:
+sbal <- function(dbh, ba, spp, stat, sppref){
+  sapply(dbh, function(x){
+    index <- dbh > x & spp == sppref & stat == 1
+    return(sum(ba[index]))
+  })
+}
+
+sppbal <- lapply(levels(nf_trees$SPCD), function(i) {
+  temp <- nf_trees %>% group_by(PLT_CN, SUBP) %>% 
+    mutate(sppbal = sbal(DIA, 
+                         ba_ac,
+                         spp = SPCD, 
+                         stat = STATUSCD, 
+                         sppref = i)) %>% 
+    ungroup()
+  return(temp$sppbal)
+})
+
+temp <- as.data.frame(do.call(cbind, sppbal))
+names(temp) <- paste0("bal_", levels(nf_trees$SPCD))
+nf_trees <- cbind(nf_trees, temp)
+
+
+################################################################################
+# Combine FIA tables & reformat
+################################################################################
+
+# get before and after data and remeasurement period for each tree and -----
+# add initial cond and plot data -------------------------------------------
+
+nf_end <- nf_trees %>%
+  left_join(nf_plots, by = "PLT_CN") %>%
+  left_join(nf_conds, by = c("PLT_CN", "CONDID")) %>%
+  rename(cn_e = CN, 
+         plt_cn_e = PLT_CN, 
+         condid_e = CONDID, 
+         dbh_e = DIA, 
+         statuscd_e = STATUSCD,
+         mortyr_e = MORTYR, 
+         cr_e = CR, 
+         crown_class_e = CCLCD, 
+         tree_class_e = TREECLCD, 
+         MEASYEAR_E = MEASYEAR, 
+         MEASMON_E = MEASMON, 
+         MEASDAY_E = MEASDAY, 
+         ba1_e = ba,
+         bal1_e = bal, 
+         ht_e = HT,
+         forest_type_e = FORTYPCD, 
+         stocking_e = ALSTKCD, 
+         site_class_e = SITECLCD,
+         landscape_e = PHYSCLCD, 
+         slope_e = SLOPE, 
+         aspect_e = ASPECT, 
+         designcd_e = DESIGNCD) %>%
+  select(-SPCD, -starts_with("ba_"), -starts_with("bal_"), -SUBP)
+
+nf_start <- nf_trees %>%
+  filter(CN %in% nf_end$PREV_TRE_CN) %>% 
+  left_join(nf_plots, by = "PLT_CN") %>% 
+  left_join(nf_conds, by = c("PLT_CN", "CONDID")) %>%
+  rename(cn_s = CN, 
+         plt_cn_s = PLT_CN, 
+         condid_s = CONDID, 
+         dbh_s = DIA, 
+         statuscd_s = STATUSCD, 
+         mortyr_s = MORTYR, 
+         cr_s = CR, 
+         crown_class_s = CCLCD, 
+         tree_class_s = TREECLCD, 
+         MEASYEAR_S = MEASYEAR, 
+         MEASMON_S = MEASMON, 
+         MEASDAY_S = MEASDAY, 
+         ba1_s = ba, 
+         bal1_s = bal, 
+         ht_s = HT, 
+         forest_type_s = FORTYPCD, 
+         stocking_s = ALSTKCD, 
+         site_class_s = SITECLCD,
+         landscape_s = PHYSCLCD, 
+         slope_s = SLOPE, 
+         aspect_s = ASPECT, 
+         designcd_s = DESIGNCD) %>%
+  select(-PREV_TRE_CN, -PREV_PLT_CN, -LAT, -LON, -ELEV)
+
+nf_fia <- nf_end %>%
+  left_join(nf_start, by = c("PREV_TRE_CN" = "cn_s")) %>%
+  filter(statuscd_s == 1, # only trees that started live
+         statuscd_e != 0, # remove trees that were remeasured incorrectly
+         cr_s >= 0,       # only trees that had cr at start 
+         designcd_s == 1, # only those with current plot design 
+         designcd_e == 1) %>%   
+  mutate(MEASMON_E = formatC(MEASMON_E, width = 2, format = "d", flag = "0"), 
+         MEASMON_S = formatC(MEASMON_S, width = 2, format = "d", flag = "0"),
+         MEASDAY_E = formatC(MEASDAY_E, width = 2, format = "d", flag = "0"),
+         MEASDAY_S = formatC(MEASDAY_S, width = 2, format = "d", flag = "0"),
+         #make month and day codes 2 digits
+         date_s = ymd(paste0(MEASYEAR_S, MEASMON_S, MEASDAY_S)),
+         date_e = ymd(paste0(MEASYEAR_E, MEASMON_E, MEASDAY_E))) %>%
+  # remove incorrectly entered dates (eg. Feb 31)
+  filter(!is.na(date_e), !is.na(date_s)) %>% 
+  mutate(interval = as.double(as.period(date_e - date_s), unit = "years"),
+         cr_rate = (cr_e - cr_s)/interval,
+         cr_mid = (cr_e + cr_s)/2,
+         dbh_rate = (dbh_e - dbh_s)/interval,
+         dbh_mid = (dbh_e + dbh_s)/2,
+         ba1_mid = (ba1_e + ba1_s)/2,
+         bal1_mid = (bal1_e + bal1_s)/2,
+         ht_mid = (ht_e + ht_s)/2,
+         ht_rate = (ht_e - ht_s)/interval,
+         status_change = case_when(statuscd_e == 1 ~ "lived",
+                                   statuscd_e == 2 ~ "died",
+                                   statuscd_e == 3 ~ "cut",
+                                   TRUE ~ "error"),
+         status_change = as.factor(status_change),
+         SPCD = as.factor(SPCD),
+         plt_cn_e = as.factor(plt_cn_e)) %>%
+  rename(ba1_ac = ba_ac) %>% 
+  select(cn_e, spp = SPCD, dbh_e, dbh_rate, cr_s, cr_mid, 
+         cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
+         tree_class_e, ba1_s, ba1_mid, ba1_e,
+         bal1_s, bal1_mid, bal1_e, ht_s, ht_mid, ht_e, ht_rate,
+         forest_type_s, forest_type_e, stocking_s, stocking_e, 
+         landscape_s, landscape_e, site_class_s, site_class_e, 
+         slope_s, slope_e, aspect_s, aspect_e, lat = LAT, lon = LON, 
+         elev = ELEV, date_s, date_e, interval, status_change,
+         plot = plt_cn_e, ba1_ac, plt_cn_s, SUBP,
+         starts_with("ba_"), starts_with("bal_")) %>% 
+  # mortality year was all null and was removed
+  inner_join(nf_grms, by = c("cn_e" = "TRE_CN")) %>% 
+  # use these dbh's b/c inconsistencies have been resolved (eg. measurements at different heights)
+  rename(dbh_s = DIA_BEGIN, dbh_mid = DIA_MIDPT, 
+         dbh_rate_fia = ANN_DIA_GROWTH, state = STATECD) 
+  
+
+remove(nf_start, nf_end, nf_conds, nf_plots, nf_trees, nf_grms, states, 
+       VT_counties, NH_counties, NY_counties, ME_counties, pbal, state,
+       sppba, sppbal, temp, species, species_codes, sbal)
+
+
+# Keep starting values for fixed variables & ------------------------------
+# only keep records with all neccessary fields ----------------------------
+
+nf_fia <- nf_fia %>%
+  rename(landscape = landscape_s,
+         site_class = site_class_s,
+         slope = slope_s,
+         aspect = aspect_s) %>%
+  select(-landscape_e, -site_class_e, -slope_e, -aspect_e) %>%
+  filter(!is.na(spp), # only keep records with all neccessary fields
+         !is.na(dbh_s), # could these affect some trees in a plot but not all?
+         !is.na(crown_class_s),
+         !is.na(tree_class_s),
+         !is.na(ba1_s),
+         !is.na(bal1_s),
+         !is.na(forest_type_s),
+         !is.na(forest_type_e),
+         !is.na(stocking_s),
+         !is.na(stocking_e),
+         !is.na(landscape),
+         !is.na(site_class),
+         !is.na(slope),
+         !is.na(aspect),
+         !is.na(lat),
+         !is.na(lon),
+         !is.na(elev),
+         !is.na(status_change),
+         xor(is.na(bal1_e), status_change == "lived"))
+
+
+################################################################################
+# Make names and factor levels more intuitive 
+################################################################################
+
+# Forest types -----------------------------------------------------------------
 
 forest_type_codes <- 
   c(101, 102, 103, 104, 105, 121, 122, 123, 124, 125, 126, 127, 
@@ -379,7 +439,7 @@ nf_fia$forest_type_e <-
   factor(unname(forest_types[as.character(nf_fia$forest_type_e)]),
          levels = levels(factor(forest_types)))
 
-#---------------------------------------------------------------------------
+# Landscapes -------------------------------------------------------------------
 
 landscape_codes <- # add 19 & 33
   c(11, 12, 13, 19, 21, 22, 23, 24, 25, 29, 31, 32, 33, 34, 39)
@@ -395,62 +455,29 @@ names(landscapes) <- as.character(landscape_codes)
 nf_fia$landscape <- factor(unname(landscapes[as.character(nf_fia$landscape)]),
                            levels = levels(factor(landscapes)))
 
-#---------------------------------------------------------------------------
 
-remove(forest_type_codes, forest_types, landscape_codes,
-       landscapes, species, species_codes)
+################################################################################
+# Finish up
+################################################################################
+
+remove(forest_type_codes, forest_types, landscape_codes, landscapes)
 
 # put columns in order
 nf_fia <- nf_fia %>%
   select(spp, dbh_s, dbh_mid, dbh_e, dbh_rate, dbh_rate_fia, cr_s, cr_mid, 
          cr_e, cr_rate, crown_class_s, crown_class_e, tree_class_s, 
-         tree_class_e, ba_s, ba_mid, ba_e, bal_s, bal_mid, bal_e, ht_s, 
+         tree_class_e, ba1_s, ba1_mid, ba1_e, bal1_s, bal1_mid, bal1_e, ht_s, 
          ht_mid, ht_e, ht_rate, forest_type_s, forest_type_e,
          stocking_s, stocking_e, landscape, site_class, slope, aspect,
          lat, lon, elev, state, date_s, date_e, interval, status_change,
-         plot, ba_ac, plt_cn_s, SUBP)
-
-
-# Add species-specific basal areas (at start of remeasurement period) ------
-
-sppba <- lapply(levels(nf_fia$spp), function(i) {
-  temp <- nf_fia %>% group_by(plt_cn_s, SUBP) %>% 
-    mutate(sppba = sum(ba_ac[spp == i])) %>% 
-    ungroup()
-  return(temp$sppba)
-})
-
-temp <- as.data.frame(do.call(cbind, sppba))
-names(temp) <- paste0("ba_", levels(nf_fia$spp))
-nf_fia <- cbind(nf_fia, temp)
-
-
-# Add species-specific bal (at start of remeasurement period) --------------
-
-# Calculates overtopping basal area (BAL) of one species only, assuming all 
-# input trees are in same plot and ba is adjusted based on tpa:
-sbal <- function(dbh, ba, spp, sppref){
-  sapply(dbh, function(x){
-    index <- dbh > x & spp == sppref
-    return(sum(ba[index]))
-  })
-}
-
-sppbal <- lapply(levels(nf_fia$spp), function(i) {
-  temp <- nf_fia %>% group_by(plt_cn_s, SUBP) %>% 
-    mutate(sppbal = sbal(dbh_s, ba_ac, spp, i)) %>% 
-    ungroup()
-  return(temp$sppbal)
-})
-
-temp <- as.data.frame(do.call(cbind, sppbal))
-names(temp) <- paste0("bal_", levels(nf_fia$spp))
-nf_fia <- cbind(nf_fia, temp) %>% 
-  select(-ba_ac, -plt_cn_s, -SUBP)
+         plot, ba1_ac, plt_cn_s, SUBP,
+         starts_with("ba_"), starts_with("bal_")) %>% 
+  rename(ba_s = ba1_s, ba_mid = ba1_mid, ba_e = ba1_e,
+         bal_s = bal1_s, bal_mid = bal1_mid, bal_e = bal1_e,
+         ba_ac = ba1_ac)
 
 
 # Save ---------------------------------------------------------------------
-
 
 save(nf_fia, file = "rda/nf-fia.rda")
 
