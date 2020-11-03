@@ -250,7 +250,7 @@ sppba <- lapply(levels(nf_trees$SPCD), function(i) {
 })
 
 temp <- as.data.frame(do.call(cbind, sppba))
-names(temp) <- paste0("ba_", levels(nf_trees$SPCD))
+names(temp) <- str_replace(paste0("ba_", levels(nf_trees$SPCD)), " ", ".")
 nf_trees <- cbind(nf_trees, temp)
 
 
@@ -277,7 +277,7 @@ sppbal <- lapply(levels(nf_trees$SPCD), function(i) {
 })
 
 temp <- as.data.frame(do.call(cbind, sppbal))
-names(temp) <- paste0("bal_", levels(nf_trees$SPCD))
+names(temp) <- str_replace(paste0("bal_", levels(nf_trees$SPCD)), " ", ".")
 nf_trees <- cbind(nf_trees, temp)
 ```
 
